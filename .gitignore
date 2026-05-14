@@ -1,0 +1,9 @@
+# Runtime artifacts
+artifacts/_*.md
+artifacts/_*.png
+artifacts/final-report.md
+artifacts/node_modules/
+artifacts/package-lock.json
+artifacts/package.json
+artifacts/explore.mjs
+artifacts/*.html
