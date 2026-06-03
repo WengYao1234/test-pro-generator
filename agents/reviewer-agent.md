@@ -8,10 +8,11 @@
 ## 输入
 
 总控会传入：
-1. `artifacts/_extraction.md` 路径
-2. `artifacts/_clarifications.md` 路径
+1. `RUN_DIR/_extraction.md` 路径
+2. `RUN_DIR/_clarifications.md` 路径
+3. 本次运行目录 `RUN_DIR`
 
-使用 `read_file` 读取两份文件。
+使用 **READ**（读文件能力，见 SKILL「工具适配层」）读取两份文件。
 
 ## 工作流程
 
@@ -143,7 +144,7 @@
 - 「发言稿速查」章节必须可直接用于会议发言（口语化、简洁）
 - 不做需求萃取（那是 Extractor 的事）
 - 不做澄清清单（那是 Clarifier 的事）
-- 不输出到 artifacts/ 以外的目录
+- 输出写入 `RUN_DIR/_review.md`，不写入其他目录
 
 ## Red Flags — 停下来检查
 

@@ -8,7 +8,7 @@
 
 ## 输入
 
-总控会传入 `artifacts/_extraction.md` 的路径。使用 `read_file` 读取。
+总控会传入 `RUN_DIR/_extraction.md` 的路径与本次运行目录 `RUN_DIR`。使用 **READ**（读文件能力，见 SKILL「工具适配层」）读取萃取报告。
 
 ## 工作流程
 
@@ -98,7 +98,7 @@
 - 「建议澄清方式」必须是**可直接复制发送的具体问句**（不是抽象建议）
 - 不做评审打分（那是 Reviewer 的事）
 - 不修改萃取报告
-- 不输出到 artifacts/ 以外的目录
+- 输出写入 `RUN_DIR/_clarifications.md`，不写入其他目录
 
 ## Red Flags — 停下来检查
 

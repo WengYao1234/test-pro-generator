@@ -17,8 +17,9 @@
 
 总控会传入：
 1. HTML 原型链接（必填）
-2. `artifacts/_parsed-content.md` 路径（如有文档解析结果）
-3. 行业经验库路径：`knowledge/`
+2. `RUN_DIR/_parsed-content.md` 路径（如有文档解析结果）
+3. 本次运行目录 `RUN_DIR`（产物与截图都写到这里）
+4. 行业经验库路径：`knowledge/`
 
 ## 事前准备：加载经验库
 
@@ -29,31 +30,65 @@
 - `knowledge/anti-patterns.md` — 对照检查设计是否反直觉
 - `knowledge/quantitative-baselines.md` — 对照检查模糊描述，给出量化建议
 
-## 技术栈
+## 技术栈（用抽象能力名，按 SKILL「工具适配层」映射到你的 Harness）
 
-| 层级 | 工具/方法 | 用途 |
+| 层级 | 抽象能力 | 用途 |
 |------|----------|------|
-| 页面抓取 | `web_fetch` | 获取 HTML 源码、静态分析页面结构 |
-| 截图采集 | `web_fetch` + screenshot | 记录每个页面的视觉状态 |
-| 浏览器自动化 | Playwright（`run_shell_command` 执行 .js 脚本） | 点击、填表、导航、观察 DOM 变化 |
-| DOM 分析 | `grep_search` | 从 HTML 源码中提取 class/id/属性模式 |
-| 脚本执行 | `run_shell_command` | 批量自动化探索原型交互 |
+| 页面抓取 | **FETCH** | 获取 HTML 源码、静态分析页面结构（**仅文本，不能截图**） |
+| 截图采集 | **BROWSER**（Playwright 截图） | 记录每个页面/状态的视觉（截图**只能由 BROWSER 产出**） |
+| 浏览器自动化 | **BROWSER** | 点击、填表、导航、观察 DOM 变化、截图 |
+| DOM 分析 | **SEARCH** | 从 HTML 源码中提取 class/id/属性模式 |
+| 脚本执行 | **SHELL** | **仅允许**：安装/调用 Playwright、运行本技能生成的探索脚本（仅当 BROWSER 走脚本路径时需要） |
+
+> **BROWSER 两种实现**：若环境有 **Playwright MCP** → 直接用其导航/快照/截图工具，无需写脚本；否则经 **SHELL** 安装并运行本 Skill 生成的 Playwright 脚本。两者产出一致。
+>
+> **工具边界**：**FETCH** 返回的是文本/HTML，**没有任何截图能力**——凡是「截图」「视觉状态」一律走 **BROWSER**。**SHELL** 不得用于探索原型以外的用途（不下载无关内容、不改动 `RUN_DIR/` 以外文件、不执行删除类命令）。
+
+### 探索模式：完整探索 vs snapshot-only
+
+并非所有原型都需要逐状态截图。**先判定原型类型，再决定截图策略：**
+
+| 原型类型 | 截图策略 | 说明 |
+|---------|---------|------|
+| 多页面 / 有真实交互态（loading/error/弹窗可触发） | **完整探索**：每个新页面/状态截图（≤40 张） | 截图是状态发现的核心证据 |
+| 静态 / 单页 / 无后端（点击直接假跳转、校验未实现） | **snapshot-only 允许**：用 DOM/无障碍快照 + 属性提取替代逐状态截图 | 这类原型逐状态截图无新增信息 |
+
+**硬性底线（两种模式都适用）**：**主要页面（如登录页、首页）至少留 1 张基准截图**存入 `RUN_DIR/screenshots/`，作为「确实打开过原型」的视觉证据。**截图数=0 是不允许的**（除非环境完全无 BROWSER 能力，此时须在「原型探索摘要」明确写出「环境无 BROWSER，仅文本分析」）。
+
+> 选择 snapshot-only 时，在「原型探索摘要」的「探索完整度」里写明原因（如「静态单页原型，点击登录为假跳转，无真实交互态可截，采用 snapshot-only」），避免读者误以为漏截。
+
+## 探索预算（循环治理 — 必须遵守）
+
+原型可能有几十个页面、上百个控件。**无上限遍历会导致截图爆炸、上下文溢出、token 烧光**。因此探索受以下预算约束：
+
+| 预算项 | 上限 | 超限处理 |
+|--------|------|---------|
+| 探索页面数 | ≤ 15 个 | 优先覆盖导航主入口，其余记入「未探索清单」并标 TODO |
+| 单页交互控件采样 | ≤ 20 个 | 同类控件（如同一张表的多个 input）取代表样本，其余归纳描述 |
+| 截图总数 | ≤ 40 张 | 同一状态只截一次；达到上限后改用文字描述记录 |
+| 同一脚本连续失败 | ≥ 2 次 | 停止该脚本，记录失败原因，不再重试同一写法 |
+
+**早停原则**：当「新一轮探索不再产出新的页面/状态/规则」时，**立即停止**，不必凑满五轮。轮次是手段不是目标。
+
+**循环自检**：若发现自己在对同一页面/同一控件反复操作而无新信息，判定为陷入无效循环，立即跳出并在报告中记录。
 
 ## 工作流程
 
+> 以下五轮是**探索维度的检查清单**，不是必须全部跑满的硬性轮数。在「探索预算」内，覆盖到即可早停。
+
 ### 第一轮：静态结构扫描
 
-使用 `web_fetch` 抓取原型首页 HTML 源码。
+使用 **FETCH** 抓取原型首页 HTML 源码。
 
 分析内容：
 1. 解析导航菜单 → 列出所有页面/模块名称
 2. 扫描所有 `<a href>` → 构建页面跳转列表
 3. 扫描 class/id 命名 → 推断组件复用关系
-4. 截图记录首页视觉状态（如 `web_fetch` 支持截图）
+4. 首页视觉状态截图 → 用 **BROWSER** 截图（**FETCH** 无截图能力，不要用它截图）。**这是基准截图，无论后续是否 snapshot-only 都必须留至少这 1 张**
 
 ### 第二轮：字段规则提取
 
-对每个包含表单的页面，使用 `web_fetch` 获取 HTML，提取：
+对每个包含表单的页面，使用 **FETCH** 获取 HTML，提取：
 
 | 元素 | 提取属性 | 映射到需求类型 |
 |------|---------|---------------|
@@ -65,40 +100,17 @@
 
 ### 第三轮：交互探索
 
-编写 Playwright 脚本（保存为 `.js` 文件，通过 `run_shell_command` 执行），对每个交互元素进行操作。
+用 **BROWSER** 对每个交互元素进行操作：
+- **有 Playwright MCP** → 直接用 MCP 的导航/点击/填表/截图工具，**无需脚本**。
+- **无 MCP** → 经 **SHELL** 运行本 Skill 自带的规范脚本 **`scripts/playwright-explore-template.js`**（**不要手写新脚本**，避免与规范版漂移）。该脚本已内置探索预算（导航≤15、表单≤20、按钮≤20），自动截图并产出 `RUN_DIR/playwright-observations.json`：
 
-**Playwright 探索脚本模板：**
-
-```javascript
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  await page.goto('[原型URL]');
-
-  // 1. 点击每个导航项，截图
-  const navLinks = await page.$$('nav a');
-  for (const link of navLinks) {
-    const text = await link.textContent();
-    await link.click();
-    await page.screenshot({ path: `screenshots/nav-${text.trim()}.png` });
-    await page.goBack();
-  }
-
-  // 2. 填充表单，触发校验
-  const inputs = await page.$$('input[required]');
-  for (const input of inputs) {
-    await input.fill('');  // 空值触发 required 校验
-    await input.press('Tab');
-    // 截图观察校验提示
-  }
-
-  // 3. 点击标签页/折叠面板，截图
-  // 4. 触发弹窗，截图，测试关闭路径
-
-  await browser.close();
-})();
+```bash
+# 需先安装 Playwright：npm i playwright 且 npx playwright install chromium
+node scripts/playwright-explore-template.js "<原型URL>" "<RUN_DIR>"
+# 或用环境变量：PROTO_URL=<原型URL> RUN_DIR=<RUN_DIR> node scripts/playwright-explore-template.js
 ```
+
+读取 `RUN_DIR/playwright-observations.json`（导航/表单/按钮/错误）与 `RUN_DIR/screenshots/` 作为本轮交互探索的证据。若需要脚本未覆盖的特定交互（弹窗关闭路径、标签页展开等），在预算内**少量补充**针对性操作，仍优先复用该脚本而非整体重写。
 
 探索清单：
 - [ ] 每个导航入口 → 截图 + 记录跳转目标
@@ -143,7 +155,7 @@ const { chromium } = require('playwright');
 
 ## 输出：双维度分析
 
-将探索结果写入 `artifacts/_extraction.md`。
+将探索结果写入 `RUN_DIR/_extraction.md`，截图统一存到 `RUN_DIR/screenshots/`（`RUN_DIR` 由总控传入）。
 
 ## 输出格式模板
 
@@ -157,11 +169,18 @@ const { chromium } = require('playwright');
 
 ## 原型探索摘要
 
-- 发现页面数：[N]
+- 发现页面数：[N]（已探索 [N] / 受预算限制未探索 [N]）
 - 发现弹窗数：[N]
 - 发现表单数：[N]
 - 涉及状态的实体数：[N]
+- 截图数 / 上限：[N] / 40
 - 截图存放：[路径]
+- 探索完整度：[完整 / 因早停结束（说明原因）/ 因预算上限部分覆盖]
+
+### 未探索清单（如有，受预算限制）
+| 页面/控件 | 未探索原因 | 建议补充方式 |
+|----------|-----------|------------|
+| ... | 超出页面预算 | 后续单独探索 / 人工确认 |
 
 ### 页面流转图
 
@@ -285,10 +304,15 @@ const { chromium } = require('playwright');
 
 ## 约束
 
-- **必须完成五轮探索才能输出报告**（不能跳过任何一轮）
+- **五轮是探索维度的检查清单**：在「探索预算」内覆盖到这五个维度即可输出；若早停，须在报告「原型探索摘要」中说明哪些维度因预算/无新增而提前结束
+- 必须遵守上方「探索预算」的所有上限，并在报告中附「未探索清单」（如有）
 - 不做澄清建议（那是 Clarifier 的事）
 - 不做评审打分（那是 Reviewer 的事）
 - **所有判断必须标注经验来源**（如「对照 `anti-patterns.md` 发现...」）
 - 有 `_parsed-content.md` 时必须**交叉验证**：文档里的规则在原型里是否体现？
-- 原型探索：`web_fetch` 获取页面，`run_shell_command` 执行 Playwright 脚本
-- 不输出到 artifacts/ 以外的目录
+- 原型探索：**FETCH** 获取页面文本/HTML，**BROWSER** 做交互与截图（MCP 优先，否则经 **SHELL** 跑 Playwright 脚本）
+- 只输出到总控指定的 `RUN_DIR`（含 `screenshots/`），不写入其他目录
+- **截图底线**：主要页面至少 1 张基准截图；选 snapshot-only 时在「探索完整度」写明原因（见「探索模式」）
+- **落盘前自检（自相矛盾会误导下游）**：交付前核对——
+  - 「原型探索摘要」里的各项计数 **= 正文实际条数**（如「涉及状态的实体数」必须等于维度 1.5 状态表的行数；「发现弹窗数」= 实际记录的弹窗数）；不一致就改正后再交付
+  - 「截图数」与 `screenshots/` 目录实际文件数一致

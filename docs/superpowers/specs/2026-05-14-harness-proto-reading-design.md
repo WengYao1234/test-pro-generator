@@ -77,9 +77,9 @@ START → PARSE → EXTRACT → CLARIFY → REVIEW → AGGREGATE → DONE
 
 | 层级 | 工具/方法 | 用途 |
 |------|----------|------|
-| 页面抓取 | `web_fetch` | 获取 HTML 源码、静态分析页面结构 |
-| 截图采集 | `web_fetch` + screenshot 能力 | 记录每个页面的视觉状态 |
-| 浏览器自动化 | Playwright（通过子进程执行脚本） | 点击、填表、导航、观察 DOM 变化 |
+| 页面抓取 | `web_fetch` | 获取 HTML 源码、静态分析页面结构（仅文本，无截图能力） |
+| 截图采集 | Playwright `page.screenshot()` | 记录每个页面/状态的视觉（截图只能由 Playwright 产出） |
+| 浏览器自动化 | Playwright（通过子进程执行脚本） | 点击、填表、导航、观察 DOM 变化、截图 |
 | DOM 分析 | `grep_search` + 正则 | 从 HTML 源码中提取 class/id/属性模式 |
 | 脚本执行 | `run_shell_command` 执行 Playwright 脚本 | 批量自动化探索原型交互 |
 
